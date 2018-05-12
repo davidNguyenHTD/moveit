@@ -43,6 +43,7 @@
 #include <moveit/profiler/profiler.h>
 #include <boost/bind.hpp>
 #include <moveit/robot_model/aabb.h>
+#include <tf/tf.h>
 
 namespace moveit
 {
@@ -1614,6 +1615,16 @@ bool RobotState::setFromIK(const JointModelGroup* jmg, const EigenSTL::vector_Af
 
   bool first_seed = true;
   std::vector<double> initial_values;
+
+  consistency_limits.clear();
+  for (std::size_t i = 0; i < 7; ++i) {
+    consistency_limits.push_back(0.5);
+  }
+  std::vector<double> ranges;
+  for (std::size_t i = 0; i < 7; ++i) {
+    ranges.push_back(0.25);
+  }
+
   for (unsigned int st = 0; st < attempts; ++st)
   {
     std::vector<double> seed(bij.size());
@@ -1633,7 +1644,7 @@ bool RobotState::setFromIK(const JointModelGroup* jmg, const EigenSTL::vector_Af
       // sample a random seed
       random_numbers::RandomNumberGenerator& rng = getRandomNumberGenerator();
       std::vector<double> random_values;
-      jmg->getVariableRandomPositions(rng, random_values);
+      jmg->getVariableRandomPositionsNearBy(rng, random_values, initial_values, ranges);
       for (std::size_t i = 0; i < bij.size(); ++i)
         seed[i] = random_values[bij[i]];
 
@@ -1650,6 +1661,10 @@ bool RobotState::setFromIK(const JointModelGroup* jmg, const EigenSTL::vector_Af
     // compute the IK solution
     std::vector<double> ik_sol;
     moveit_msgs::MoveItErrorCodes error;
+    seed[3] = initial_values[3];
+    /*ROS_INFO_NAMED("robot_state", "attempt: %d out of %d. timeout %.3f", st, attempts, timeout);
+    for (int i = 0; i < seed.size(); ++i)
+      ROS_INFO_NAMED("robot_state", "IK sovling: Seed value: %d %.3f", i, seed[i]);*/
 
     if (solver->searchPositionIK(ik_queries, seed, timeout, consistency_limits, ik_sol, ik_callback_fn, error, options,
                                  this))
@@ -1869,7 +1884,7 @@ double RobotState::computeCartesianPath(const JointModelGroup* group, std::vecto
                                         bool global_reference_frame, double distance, double max_step,
                                         const JumpThreshold& jump_threshold,
                                         const GroupStateValidityCallbackFn& validCallback,
-                                        const kinematics::KinematicsQueryOptions& options)
+                                        const kinematics::KinematicsQueryOptions& options, int ik_attempts, double ik_timeout)
 {
   // this is the Cartesian pose we start from, and have to move in the direction indicated
   const Eigen::Affine3d& start_pose = getGlobalLinkTransform(link);
@@ -1883,7 +1898,7 @@ double RobotState::computeCartesianPath(const JointModelGroup* group, std::vecto
 
   // call computeCartesianPath for the computed target pose in the global reference frame
   return (distance *
-          computeCartesianPath(group, traj, link, target_pose, true, max_step, jump_threshold, validCallback, options));
+          computeCartesianPath(group, traj, link, target_pose, true, max_step, jump_threshold, validCallback, options, ik_attempts, ik_timeout));
 }
 
 double RobotState::computeCartesianPath(const JointModelGroup* group, std::vector<RobotStatePtr>& traj,
@@ -1891,7 +1906,7 @@ double RobotState::computeCartesianPath(const JointModelGroup* group, std::vecto
                                         bool global_reference_frame, double max_step,
                                         const JumpThreshold& jump_threshold,
                                         const GroupStateValidityCallbackFn& validCallback,
-                                        const kinematics::KinematicsQueryOptions& options)
+                                        const kinematics::KinematicsQueryOptions& options, int ik_attempts, double ik_timeout)
 {
   const std::vector<const JointModel*>& cjnt = group->getContinuousJointModels();
   // make sure that continuous joints wrap
@@ -1936,15 +1951,19 @@ double RobotState::computeCartesianPath(const JointModelGroup* group, std::vecto
     Eigen::Affine3d pose(start_quaternion.slerp(percentage, target_quaternion));
     pose.translation() = percentage * rotated_target.translation() + (1 - percentage) * start_pose.translation();
 
-    if (setFromIK(group, pose, link->getName(), 1, 0.0, validCallback, options))
+    if (setFromIK(group, pose, link->getName(), ik_attempts, ik_timeout, validCallback, options))
     {
       traj.push_back(RobotStatePtr(new RobotState(*this)));
     }
-    else
+    else{
+      geometry_msgs::Pose geom_pose;
+      tf::poseEigenToMsg(pose, geom_pose);
+      ROS_INFO_STREAM("*** RobotState::computeCartesianPath: failed to find IK with pose: " << geom_pose);
       break;
+    }
     last_valid_percentage = percentage;
   }
-
+  //ROS_INFO("*** RobotState::computeCartesianPath: last_valid_percentage %.3f", last_valid_percentage);
   last_valid_percentage *= testJointSpaceJump(group, traj, jump_threshold);
 
   return last_valid_percentage;
@@ -1955,7 +1974,7 @@ double RobotState::computeCartesianPath(const JointModelGroup* group, std::vecto
                                         bool global_reference_frame, double max_step,
                                         const JumpThreshold& jump_threshold,
                                         const GroupStateValidityCallbackFn& validCallback,
-                                        const kinematics::KinematicsQueryOptions& options)
+                                        const kinematics::KinematicsQueryOptions& options, int ik_attempts, double ik_timeout)
 {
   double percentage_solved = 0.0;
   for (std::size_t i = 0; i < waypoints.size(); ++i)
@@ -1964,7 +1983,7 @@ double RobotState::computeCartesianPath(const JointModelGroup* group, std::vecto
     static const double no_joint_space_jump_test = 0.0;
     std::vector<RobotStatePtr> waypoint_traj;
     double wp_percentage_solved = computeCartesianPath(group, waypoint_traj, link, waypoints[i], global_reference_frame,
-                                                       max_step, no_joint_space_jump_test, validCallback, options);
+                                                       max_step, no_joint_space_jump_test, validCallback, options, ik_attempts, ik_timeout);
     if (fabs(wp_percentage_solved - 1.0) < std::numeric_limits<double>::epsilon())
     {
       percentage_solved = (double)(i + 1) / (double)waypoints.size();
@@ -2027,7 +2046,7 @@ double RobotState::testRelativeJointSpaceJump(const JointModelGroup* group, std:
   for (std::size_t i = 0; i < dist_vector.size(); ++i)
     if (dist_vector[i] > thres)
     {
-      ROS_DEBUG_NAMED("robot_state", "Truncating Cartesian path due to detected jump in joint-space distance");
+      ROS_INFO_NAMED("robot_state", "Truncating Cartesian path due to detected jump in joint-space distance");
       percentage = (double)(i + 1) / (double)(traj.size());
       traj.resize(i + 1);
       break;

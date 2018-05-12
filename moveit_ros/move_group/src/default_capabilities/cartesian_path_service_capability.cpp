@@ -43,6 +43,7 @@
 #include <moveit/planning_pipeline/planning_pipeline.h>
 #include <moveit_msgs/DisplayTrajectory.h>
 #include <moveit/trajectory_processing/iterative_time_parameterization.h>
+#include <moveit/kinematics_base/kinematics_base.h>
 
 move_group::MoveGroupCartesianPathService::MoveGroupCartesianPathService()
   : MoveGroupCapability("CartesianPathService"), display_computed_paths_(true)
@@ -127,6 +128,7 @@ bool move_group::MoveGroupCartesianPathService::computeService(moveit_msgs::GetC
           robot_state::GroupStateValidityCallbackFn constraint_fn;
           std::unique_ptr<planning_scene_monitor::LockedPlanningSceneRO> ls;
           std::unique_ptr<kinematic_constraints::KinematicConstraintSet> kset;
+          kinematics::KinematicsQueryOptions kinematics_query_option;
           if (req.avoid_collisions || !kinematic_constraints::isEmpty(req.path_constraints))
           {
             ls.reset(new planning_scene_monitor::LockedPlanningSceneRO(context_->planning_scene_monitor_));
@@ -138,14 +140,16 @@ bool move_group::MoveGroupCartesianPathService::computeService(moveit_msgs::GetC
                 kset->empty() ? NULL : kset.get(), _1, _2, _3);
           }
           bool global_frame = !robot_state::Transforms::sameFrame(link_name, req.header.frame_id);
-          ROS_INFO("Attempting to follow %u waypoints for link '%s' using a step of %lf m and jump threshold %lf (in "
-                   "%s reference frame)",
+          ROS_INFO("[%s] Attempting to follow %u waypoints for link '%s' using a step of %lf m and jump threshold %lf (in "
+                   "%s reference frame)", CARTESIAN_PATH_SERVICE_NAME.c_str(),
                    (unsigned int)waypoints.size(), link_name.c_str(), req.max_step, req.jump_threshold,
                    global_frame ? "global" : "link");
           std::vector<robot_state::RobotStatePtr> traj;
+          double ik_timeout = 0.1;
+          int ik_attempts = 5;
           res.fraction =
               start_state.computeCartesianPath(jmg, traj, start_state.getLinkModel(link_name), waypoints, global_frame,
-                                               req.max_step, req.jump_threshold, constraint_fn);
+                                               req.max_step, req.jump_threshold, constraint_fn, kinematics_query_option, ik_attempts, ik_timeout);
           robot_state::robotStateToRobotStateMsg(start_state, res.start_state);
 
           robot_trajectory::RobotTrajectory rt(context_->planning_scene_monitor_->getRobotModel(), req.group_name);
@@ -158,8 +162,8 @@ bool move_group::MoveGroupCartesianPathService::computeService(moveit_msgs::GetC
           time_param.computeTimeStamps(rt, 1.0);
 
           rt.getRobotTrajectoryMsg(res.solution);
-          ROS_INFO("Computed Cartesian path with %u points (followed %lf%% of requested trajectory)",
-                   (unsigned int)traj.size(), res.fraction * 100.0);
+          ROS_INFO("[%s] Computed Cartesian path with %u points (followed %lf%% of requested trajectory)",
+                   CARTESIAN_PATH_SERVICE_NAME.c_str(), (unsigned int)traj.size(), res.fraction * 100.0);
           if (display_computed_paths_ && rt.getWayPointCount() > 0)
           {
             moveit_msgs::DisplayTrajectory disp;

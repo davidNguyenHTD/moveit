@@ -1098,13 +1098,15 @@ as the new values that correspond to the group */
                               const Eigen::Vector3d& direction, bool global_reference_frame, double distance,
                               double max_step, const JumpThreshold& jump_threshold,
                               const GroupStateValidityCallbackFn& validCallback = GroupStateValidityCallbackFn(),
-                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions());
+                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions(),
+                              int ik_attempts = 0, double ik_timeout = 0.0);
 
   double computeCartesianPath(const JointModelGroup* group, std::vector<RobotStatePtr>& traj, const LinkModel* link,
                               const Eigen::Vector3d& direction, bool global_reference_frame, double distance,
                               double max_step, double jump_threshold_factor,
                               const GroupStateValidityCallbackFn& validCallback = GroupStateValidityCallbackFn(),
-                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions())
+                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions(),
+                              int ik_attempts = 0, double ik_timeout = 0.0)
   {
     return computeCartesianPath(group, traj, link, direction, global_reference_frame, distance, max_step,
                                 JumpThreshold(jump_threshold_factor), validCallback, options);
@@ -1121,16 +1123,18 @@ as the new values that correspond to the group */
                               const Eigen::Affine3d& target, bool global_reference_frame, double max_step,
                               const JumpThreshold& jump_threshold,
                               const GroupStateValidityCallbackFn& validCallback = GroupStateValidityCallbackFn(),
-                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions());
+                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions(),
+                              int ik_attempts = 0, double ik_timeout = 0.0);
 
   double computeCartesianPath(const JointModelGroup* group, std::vector<RobotStatePtr>& traj, const LinkModel* link,
                               const Eigen::Affine3d& target, bool global_reference_frame, double max_step,
                               double jump_threshold_factor,
                               const GroupStateValidityCallbackFn& validCallback = GroupStateValidityCallbackFn(),
-                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions())
+                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions(),
+                              int ik_attempts = 0, double ik_timeout = 0.0)
   {
     return computeCartesianPath(group, traj, link, target, global_reference_frame, max_step,
-                                JumpThreshold(jump_threshold_factor), validCallback, options);
+                                JumpThreshold(jump_threshold_factor), validCallback, options, ik_attempts, ik_timeout);
   }
 
   /** \brief Compute the sequence of joint values that perform a general Cartesian path.
@@ -1143,16 +1147,18 @@ as the new values that correspond to the group */
                               const EigenSTL::vector_Affine3d& waypoints, bool global_reference_frame, double max_step,
                               const JumpThreshold& jump_threshold,
                               const GroupStateValidityCallbackFn& validCallback = GroupStateValidityCallbackFn(),
-                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions());
+                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions(),
+                              int ik_attempts = 0, double ik_timeout = 0.0);
 
   double computeCartesianPath(const JointModelGroup* group, std::vector<RobotStatePtr>& traj, const LinkModel* link,
                               const EigenSTL::vector_Affine3d& waypoints, bool global_reference_frame, double max_step,
                               double jump_threshold_factor,
                               const GroupStateValidityCallbackFn& validCallback = GroupStateValidityCallbackFn(),
-                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions())
+                              const kinematics::KinematicsQueryOptions& options = kinematics::KinematicsQueryOptions(),
+                              int ik_attempts = 0, double ik_timeout = 0.0)
   {
     return computeCartesianPath(group, traj, link, waypoints, global_reference_frame, max_step,
-                                JumpThreshold(jump_threshold_factor), validCallback, options);
+                                JumpThreshold(jump_threshold_factor), validCallback, options, ik_attempts, ik_timeout);
   }
 
   /** \brief Tests joint space jumps of a trajectory.
